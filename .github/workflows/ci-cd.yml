@@ -3,10 +3,10 @@ name: Node.js Blue/Green CI/CD
 on:
   push:
     branches:
-      - main
+      - bluegreen
   pull_request:
     branches:
-      - main
+      - bluegreen
 
 jobs:
   build-and-push-image:
