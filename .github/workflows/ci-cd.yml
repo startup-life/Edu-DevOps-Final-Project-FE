@@ -76,7 +76,7 @@ jobs:
             echo "Running health check for \$TARGET"
             for i in {1..10}; do
               sleep 2
-              if docker exec community-fe-\$TARGET curl -f http://localhost:3000/health; then
+              if docker exec community-fe-\$TARGET curl -f http://localhost:8080/health; then
                 echo "Health check passed"
                 break
               elif [ \$i -eq 10 ]; then
