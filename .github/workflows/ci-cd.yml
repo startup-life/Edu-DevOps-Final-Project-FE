@@ -56,15 +56,15 @@ jobs:
           if docker ps | grep community-fe-blue; then
             TARGET=green
             STOP=community-fe-blue
-            PORT=3002
+            PORT=8082
           elif docker ps | grep community-fe-green; then
             TARGET=blue
             STOP=community-fe-green
-            PORT=3001
+            PORT=8081
           else
             TARGET=blue
             STOP=none
-            PORT=3001
+            PORT=8081
           fi
         
           echo "New target: \$TARGET"
