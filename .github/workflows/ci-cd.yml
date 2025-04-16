@@ -1,4 +1,4 @@
-name: Node.js CI/CD
+name: Node.js Blue/Green CI/CD
 
 on:
   push:
@@ -11,7 +11,6 @@ on:
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v2
@@ -39,10 +38,48 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to EC2 via Docker Compose
+      - name: Blue/Green Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
-          cd /home/${{ secrets.SERVER_USER }}/frontend
-          docker compose pull
-          docker compose up -d
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'bash -s' <<EOF
+          set -e
+
+          cd /home/${{ secrets.SERVER_USER }}/bluegreen
+
+          if docker ps -a | grep community-fe; then
+            echo "Stopping and removing legacy container: community-fe"
+            docker stop community-fe || true
+            docker rm community-fe || true
+          fi
+
+          if docker ps | grep community-fe-blue; then
+            TARGET=green
+            STOP=community-fe-blue
+            PORT=3002
+          elif docker ps | grep community-fe-green; then
+            TARGET=blue
+            STOP=community-fe-green
+            PORT=3001
+          else
+            TARGET=blue
+            STOP=none
+            PORT=3001
+          fi
+          
+          docker compose pull community-fe-\$TARGET
+          docker compose up -d community-fe-\$TARGET
+          
+          for i in {1..10}; do
+          sleep 2
+          if docker exec community-fe-\$TARGET curl -f http://localhost:3000/health; then
+          break
+          elif [ \$i -eq 10 ]; then
+          docker stop community-fe-\$TARGET
+          docker compose restart \$STOP
+          exit 1
+          fi
+          done
+          
+          sed -i "s/community-fe-[a-z]\\+/community-fe-\$TARGET/g" /home/ubuntu/bluegreen/nginx.conf
+          docker compose restart nginx-proxy
+          docker stop \$STOP || true
           EOF
