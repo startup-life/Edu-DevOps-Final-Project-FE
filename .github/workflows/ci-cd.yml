@@ -42,15 +42,17 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'bash -s' <<EOF
           set -e
-
+          
           cd /home/${{ secrets.SERVER_USER }}/bluegreen
-
+          
+          # 기존 단일 컨테이너 정리
           if docker ps -a | grep community-fe; then
             echo "Stopping and removing legacy container: community-fe"
             docker stop community-fe || true
             docker rm community-fe || true
           fi
-
+          
+          # 블루/그린 대상 판별
           if docker ps | grep community-fe-blue; then
             TARGET=green
             STOP=community-fe-blue
@@ -64,22 +66,38 @@ jobs:
             STOP=none
             PORT=3001
           fi
-          
+        
+          echo "New target: \$TARGET"
           docker compose pull community-fe-\$TARGET
           docker compose up -d community-fe-\$TARGET
           
-          for i in {1..10}; do
-          sleep 2
-          if docker exec community-fe-\$TARGET curl -f http://localhost:3000/health; then
-          break
-          elif [ \$i -eq 10 ]; then
-          docker stop community-fe-\$TARGET
-          docker compose restart \$STOP
-          exit 1
+          # 최초 배포가 아닐 경우만 헬스체크 및 롤백
+          if [ "\$STOP" != "none" ]; then
+            echo "Running health check for \$TARGET"
+            for i in {1..10}; do
+              sleep 2
+              if docker exec community-fe-\$TARGET curl -f http://localhost:3000/health; then
+                echo "Health check passed"
+                break
+              elif [ \$i -eq 10 ]; then
+                echo "Health check failed. Rolling back to \$STOP"
+                docker stop community-fe-\$TARGET
+                docker compose restart \$STOP
+                exit 1
+              fi
+            done
+          else
+            echo "First deployment. Skipping health check and rollback."
           fi
-          done
           
+          # Nginx 전환
           sed -i "s/community-fe-[a-z]\\+/community-fe-\$TARGET/g" /home/ubuntu/bluegreen/nginx.conf
           docker compose restart nginx-proxy
-          docker stop \$STOP || true
+          
+          # 이전 컨테이너 종료
+          if [ "\$STOP" != "none" ]; then
+            docker stop \$STOP || true
+          fi
+          
+          echo "Deployment complete"
           EOF
