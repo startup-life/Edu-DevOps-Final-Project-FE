@@ -92,7 +92,9 @@ jobs:
           
           # Nginx 전환
           sed -i "s/community-fe-[a-z]\\+/community-fe-\$TARGET/g" /home/ubuntu/bluegreen/nginx.conf
-          docker compose restart nginx-proxy
+          docker stop nginx-proxy || true
+          docker rm -f nginx-proxy || true
+          docker compose up -d nginx-proxy
           
           # 이전 컨테이너 종료
           if [ "\$STOP" != "none" ]; then
